@@ -96,7 +96,7 @@ func main() {
 		forwardRequest(c)
 	})
 
-	r.Run(":" + port)
+	http.ListenAndServe(":" + port, r)
 }
 
 func forwardRequest(c *gin.Context) {
