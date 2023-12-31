@@ -20,6 +20,10 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
+	"github.com/webteleport/ufo/x"
+	"github.com/webteleport/utils"
+	"github.com/webteleport/webteleport/ufo"
+	"k0s.io/pkg/middleware"
 )
 
 const tokenUrl = "https://api.github.com/copilot_internal/v2/token"
@@ -39,21 +43,41 @@ type ModelList struct {
 	Data   []Model `json:"data"`
 }
 
-var port = "8081"
 var ghuToken = ""
 
+func Arg0(args []string, fallback string) string {
+	if len(args) > 0 {
+		return args[0]
+	}
+	return fallback
+}
+
 func main() {
+	err := Run(os.Args[1:])
+	if err != nil {
+		log.Fatalln(err)
+	}
+}
+
+func Run(args []string) error {
+	handler := copilotHandler()
+	handler = x.WellKnownHealthMiddleware(middleware.GzipMiddleware(handler))
+	arg0 := Arg0(args, "https://ufo.k0s.io")
+	if arg0 == "local" {
+		port := utils.EnvPort(":8000")
+		log.Println(fmt.Sprintf("listening on http://127.0.0.1%s", port))
+		return http.ListenAndServe(port, handler)
+	}
+	return ufo.Serve(arg0, handler)
+}
+
+func copilotHandler() http.Handler {
 	err := godotenv.Load()
 	if err == nil {
-		// 从环境变量中获取配置值
-		portEnv := os.Getenv("PORT")
-		if portEnv != "" {
-			port = portEnv
-		}
 		ghuToken = os.Getenv("GHU_TOKEN")
 	}
 
-	log.Printf("Server is running on port %s, with ghu: %s", port, ghuToken)
+	log.Printf("Server is running with ghu: %s", ghuToken)
 
 	gin.SetMode(gin.ReleaseMode)
 
@@ -96,7 +120,7 @@ func main() {
 		forwardRequest(c)
 	})
 
-	http.ListenAndServe(":" + port, r)
+	return r
 }
 
 func forwardRequest(c *gin.Context) {
