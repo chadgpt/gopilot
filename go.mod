@@ -1,4 +1,4 @@
-module copilot2gpt
+module github.com/chadgpt/gopilot
 
 go 1.21.0
 

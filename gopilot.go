@@ -1,4 +1,4 @@
-package main
+package gopilot
 
 import (
 	"bufio"
@@ -50,13 +50,6 @@ func Arg0(args []string, fallback string) string {
 		return args[0]
 	}
 	return fallback
-}
-
-func main() {
-	err := Run(os.Args[1:])
-	if err != nil {
-		log.Fatalln(err)
-	}
 }
 
 func Run(args []string) error {
