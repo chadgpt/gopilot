@@ -138,9 +138,8 @@ func checkToken(ghuToken string) bool {
 
 func getHeaders(ghoToken string) map[string]string {
 	return map[string]string{
-		"Host":          "api.github.com",
-		"Authorization": "token " + ghoToken,
-
+		"Host":                  "api.github.com",
+		"Authorization":         "token " + ghoToken,
 		"Editor-Version":        "vscode/1.85.1",
 		"Editor-Plugin-Version": "copilot-chat/0.11.1",
 		"User-Agent":            "GitHubCopilotChat/0.11.1",

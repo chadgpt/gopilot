@@ -67,17 +67,6 @@ func Run([]string) (err error) {
 func Handler() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `
-		curl --location 'http://127.0.0.1:8081/v1/chat/completions' \
-		--header 'Content-Type: application/json' \
-		--header 'Authorization: Bearer ghu_xxx' \
-		--data '{
-		  "model": "gpt-4",
-		  "messages": [{"role": "user", "content": "hi"}]
-		}'`)
-	})
-
 	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(models())
