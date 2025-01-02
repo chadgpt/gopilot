@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/sha256"
+	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"github.com/patrickmn/go-cache"
@@ -46,6 +46,9 @@ var version = "v0.6.1"
 var port = "8081"
 var client_id = "Iv1.b507a08c87ecfe98"
 
+//go:embed html/*
+var embeddedFiles embed.FS
+
 func Run([]string) (err error) {
 	err = godotenv.Load()
 	if err == nil {
@@ -65,27 +68,10 @@ func Run([]string) (err error) {
 }
 
 func Handler() http.Handler {
-	gin.SetMode(gin.ReleaseMode)
+	mux := http.NewServeMux()
 
-	r := gin.Default()
-
-	// CORS 中间件
-	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-
-		c.Next()
-	})
-
-	r.GET("/", func(c *gin.Context) {
-		c.String(http.StatusOK, `
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `
 		curl --location 'http://127.0.0.1:8081/v1/chat/completions' \
 		--header 'Content-Type: application/json' \
 		--header 'Authorization: Bearer ghu_xxx' \
@@ -95,39 +81,37 @@ func Handler() http.Handler {
 		}'`)
 	})
 
-	r.GET("/v1/models", func(c *gin.Context) {
-		c.JSON(http.StatusOK, models())
+	mux.HandleFunc("/v1/models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(models())
 	})
 
-	r.POST("/v1/chat/completions", func(c *gin.Context) {
-		c.Header("Cache-Control", "no-cache, must-revalidate")
-		c.Header("Connection", "keep-alive")
+	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("Connection", "keep-alive")
 
 		requestUrl = completionsUrl
-		forwardRequest(c)
+		forwardRequest(w, r)
 	})
 
-	r.POST("/v1/embeddings", func(c *gin.Context) {
-		c.Header("Cache-Control", "no-cache, must-revalidate")
-		c.Header("Connection", "keep-alive")
+	mux.HandleFunc("/v1/embeddings", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("Connection", "keep-alive")
 
 		requestUrl = embeddingsUrl
-		forwardRequest(c)
+		forwardRequest(w, r)
 	})
-
-	// 获取ghu
 
 	t, err := loadTemplate()
 	if err != nil {
 		panic(err)
 	}
-	r.SetHTMLTemplate(t)
 
-	r.GET("/auth", func(c *gin.Context) {
+	mux.HandleFunc("/auth", func(w http.ResponseWriter, r *http.Request) {
 		// 获取设备授权码
 		deviceCode, userCode, err := getDeviceCode()
 		if err != nil {
-			c.String(http.StatusOK, "获取设备码失败："+err.Error())
+			fmt.Fprint(w, "获取设备码失败："+err.Error())
 			return
 		}
 
@@ -135,60 +119,66 @@ func Handler() http.Handler {
 		fmt.Println("Device Code: ", deviceCode)
 		fmt.Println("User Code: ", userCode)
 
-		c.HTML(http.StatusOK, "/html/auth.tmpl", gin.H{
+		t.ExecuteTemplate(w, "auth.tmpl", map[string]interface{}{
 			"title":      "Get Copilot Token",
 			"deviceCode": deviceCode,
 			"userCode":   userCode,
 		})
 	})
 
-	r.POST("/auth/check", func(c *gin.Context) {
+	mux.HandleFunc("/auth/check", func(w http.ResponseWriter, r *http.Request) {
 		returnData := map[string]string{
 			"code": "1",
 			"msg":  "",
 			"data": "",
 		}
 
-		deviceCode := c.PostForm("deviceCode")
+		deviceCode := r.FormValue("deviceCode")
 		if deviceCode == "" {
 			returnData["msg"] = "device code null"
-			c.JSON(http.StatusOK, returnData)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(returnData)
 			return
 		}
 		token, err := checkUserCode(deviceCode)
 		if err != nil {
 			returnData["msg"] = err.Error()
-			c.JSON(http.StatusOK, returnData)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(returnData)
 			return
 		}
 		if token == "" {
 			returnData["msg"] = "token null"
-			c.JSON(http.StatusOK, returnData)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(returnData)
 			return
 		}
 		returnData["code"] = "0"
 		returnData["msg"] = "success"
 		returnData["data"] = token
-		c.JSON(http.StatusOK, returnData)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(returnData)
 		return
 	})
 
-	r.POST("/auth/checkGhu", func(c *gin.Context) {
+	mux.HandleFunc("/auth/checkGhu", func(w http.ResponseWriter, r *http.Request) {
 		returnData := map[string]string{
 			"code": "1",
 			"msg":  "",
 			"data": "",
 		}
 
-		ghu := c.PostForm("ghu")
+		ghu := r.FormValue("ghu")
 		if ghu == "" {
 			returnData["msg"] = "ghu null"
-			c.JSON(http.StatusOK, returnData)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(returnData)
 			return
 		}
 		if !strings.HasPrefix(ghu, "gh") {
 			returnData["msg"] = "ghu 格式错误"
-			c.JSON(http.StatusOK, returnData)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(returnData)
 			return
 		}
 
@@ -197,37 +187,38 @@ func Handler() http.Handler {
 		returnData["code"] = "0"
 		returnData["msg"] = "success"
 		returnData["data"] = info
-		c.JSON(http.StatusOK, returnData)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(returnData)
 		return
 	})
 
-	return r
+	return mux
 }
 
-func forwardRequest(c *gin.Context) {
+func forwardRequest(w http.ResponseWriter, r *http.Request) {
 	var jsonBody map[string]interface{}
-	if err := c.ShouldBindJSON(&jsonBody); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Request body is missing or not in JSON format"})
+	if err := json.NewDecoder(r.Body).Decode(&jsonBody); err != nil {
+		http.Error(w, "Request body is missing or not in JSON format", http.StatusBadRequest)
 		return
 	}
 
-	ghuToken := strings.Split(c.GetHeader("Authorization"), " ")[1]
+	ghuToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
 
 	if !strings.HasPrefix(ghuToken, "gh") {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "auth token not found"})
+		http.Error(w, "auth token not found", http.StatusBadRequest)
 		log.Printf("token 格式错误：%s\n", ghuToken)
 		return
 	}
 
 	// 检查 token 是否有效
 	if !checkToken(ghuToken) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "auth token is invalid"})
+		http.Error(w, "auth token is invalid", http.StatusBadRequest)
 		log.Printf("token 无效：%s\n", ghuToken)
 		return
 	}
 	accToken, err := getAccToken(ghuToken)
 	if accToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -239,7 +230,7 @@ func forwardRequest(c *gin.Context) {
 
 	jsonData, err := json.Marshal(jsonBody)
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -247,7 +238,7 @@ func forwardRequest(c *gin.Context) {
 
 	req, err := http.NewRequest("POST", requestUrl, bytes.NewBuffer(jsonData))
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 
 	for key, value := range accHeaders {
@@ -269,35 +260,35 @@ func forwardRequest(c *gin.Context) {
 		log.Printf("对话失败：%d, %s ", resp.StatusCode, bodyString)
 		cache := cache.New(5*time.Minute, 10*time.Minute)
 		cache.Delete(ghuToken)
-		c.AbortWithError(resp.StatusCode, fmt.Errorf(bodyString))
+		http.Error(w, bodyString, resp.StatusCode)
 		return
 	}
 
-	c.Header("Content-Type", "application/json; charset=utf-8")
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	if isStream {
-		returnStream(c, resp)
+		returnStream(w, resp)
 	} else {
-		returnJson(c, resp)
+		returnJson(w, resp)
 	}
 	return
 }
 
-func returnJson(c *gin.Context, resp *http.Response) {
-	c.Header("Content-Type", "application/json; charset=utf-8")
+func returnJson(w http.ResponseWriter, resp *http.Response) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	body, err := io.ReadAll(resp.Body.(io.Reader))
 	if err != nil {
-		c.AbortWithError(http.StatusInternalServerError, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	c.Writer.Write(body)
+	w.Write(body)
 	return
 }
 
-func returnStream(c *gin.Context, resp *http.Response) {
-	c.Header("Content-Type", "text/event-stream; charset=utf-8")
+func returnStream(w http.ResponseWriter, resp *http.Response) {
+	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 
 	// 创建一个新的扫描器
 	scanner := bufio.NewScanner(resp.Body)
@@ -310,21 +301,21 @@ func returnStream(c *gin.Context, resp *http.Response) {
 		modifiedLine := bytes.Replace(line, []byte(`"content":null`), []byte(`"content":""`), -1)
 
 		// 将修改后的数据写入响应体
-		if _, err := c.Writer.Write(modifiedLine); err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
+		if _, err := w.Write(modifiedLine); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
 		// 添加一个换行符
-		if _, err := c.Writer.Write([]byte("\n")); err != nil {
-			c.AbortWithError(http.StatusInternalServerError, err)
+		if _, err := w.Write([]byte("\n")); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 	}
 
 	if scanner.Err() != nil {
 		// 处理来自扫描器的任何错误
-		c.AbortWithError(http.StatusInternalServerError, scanner.Err())
+		http.Error(w, scanner.Err().Error(), http.StatusInternalServerError)
 		return
 	}
 	return
@@ -332,15 +323,19 @@ func returnStream(c *gin.Context, resp *http.Response) {
 
 func loadTemplate() (*template.Template, error) {
 	t := template.New("")
-	for name, file := range Assets.Files {
-		if file.IsDir() || !strings.HasSuffix(name, ".tmpl") {
+	files, err := embeddedFiles.ReadDir("html")
+	if err != nil {
+		return nil, err
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".tmpl") {
 			continue
 		}
-		h, err := io.ReadAll(file)
+		h, err := embeddedFiles.ReadFile("html/" + file.Name())
 		if err != nil {
 			return nil, err
 		}
-		t, err = t.New(name).Parse(string(h))
+		t, err = t.New(file.Name()).Parse(string(h))
 		if err != nil {
 			return nil, err
 		}
