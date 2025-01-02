@@ -1,4 +1,4 @@
-package main
+package gopilot
 
 import (
 	"bufio"
@@ -48,8 +48,8 @@ var version = "v0.6.1"
 var port = "8081"
 var client_id = "Iv1.b507a08c87ecfe98"
 
-func main() {
-	err := godotenv.Load()
+func Run([]string) (err error) {
+	err = godotenv.Load()
 	if err == nil {
 		// 从环境变量中获取配置值
 		portEnv := os.Getenv("PORT")
@@ -198,7 +198,7 @@ func main() {
 		return
 	})
 
-	r.Run(":" + port)
+	return r.Run(":" + port)
 }
 
 func forwardRequest(c *gin.Context) {

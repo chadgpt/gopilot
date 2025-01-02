@@ -23,7 +23,7 @@
 ``` shell
 
 
-docker run -d -p 8081:8081 ersichub/copilot2gpt
+docker run -d -p 8081:8081 chadgpt/gopilot
 
 
 ```
@@ -38,7 +38,7 @@ docker run -d -p 8081:8081 ersichub/copilot2gpt
 
 cp .env.example .env
 
-./copilot2gpt
+./gopilot
 
 ```
 
