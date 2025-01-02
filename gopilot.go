@@ -41,22 +41,24 @@ type ModelList struct {
 	Data   []Model `json:"data"`
 }
 
-var version = "v0.6.1"
-var port = "8081"
 var client_id = "Iv1.b507a08c87ecfe98"
+var port = GetEnvOrDefault("PORT", "8081")
+var ghuToken = GetEnvOrDefault("GHU_TOKEN", "")
 
 //go:embed html/*
 var embeddedFiles embed.FS
 
-func Run([]string) (err error) {
-	// 从环境变量中获取配置值
-	portEnv := os.Getenv("PORT")
-	if portEnv != "" {
-		port = portEnv
+func GetEnvOrDefault(key, defaultValue string) string {
+	value := os.Getenv(key)
+	if value == "" {
+		return defaultValue
 	}
+	return value
+}
 
-	log.Printf("Server is running on port %s, version: %s\n", port, version)
-	log.Printf("client_id: %s\n", client_id)
+func Run([]string) (err error) {
+	log.Println("Server is running on port", port)
+	log.Println("client_id:", client_id)
 
 	handler := Handler()
 	return http.ListenAndServe(":"+port, handler)
@@ -197,7 +199,9 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ghuToken := strings.Split(r.Header.Get("Authorization"), " ")[1]
+	if ghuToken == "" {
+		ghuToken = strings.Split(r.Header.Get("Authorization"), " ")[1]
+	}
 
 	if !strings.HasPrefix(ghuToken, "gh") {
 		http.Error(w, "auth token not found", http.StatusBadRequest)
