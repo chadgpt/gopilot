@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"github.com/patrickmn/go-cache"
 	"github.com/tidwall/gjson"
 )
@@ -50,14 +49,10 @@ var client_id = "Iv1.b507a08c87ecfe98"
 var embeddedFiles embed.FS
 
 func Run([]string) (err error) {
-	err = godotenv.Load()
-	if err == nil {
-		// 从环境变量中获取配置值
-		portEnv := os.Getenv("PORT")
-		if portEnv != "" {
-			port = portEnv
-			version = os.Getenv("VERSION")
-		}
+	// 从环境变量中获取配置值
+	portEnv := os.Getenv("PORT")
+	if portEnv != "" {
+		port = portEnv
 	}
 
 	log.Printf("Server is running on port %s, version: %s\n", port, version)

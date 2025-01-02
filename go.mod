@@ -4,7 +4,6 @@ go 1.21.0
 
 require (
 	github.com/google/uuid v1.5.0
-	github.com/joho/godotenv v1.5.1
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/tidwall/gjson v1.17.0
 )
