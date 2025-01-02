@@ -198,7 +198,7 @@ func Run([]string) (err error) {
 		return
 	})
 
-	return r.Run(":" + port)
+	return http.ListenAndServe(":" + port, r)
 }
 
 func forwardRequest(c *gin.Context) {
