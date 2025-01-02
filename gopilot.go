@@ -62,6 +62,11 @@ func Run([]string) (err error) {
 	log.Printf("Server is running on port %s, version: %s\n", port, version)
 	log.Printf("client_id: %s\n", client_id)
 
+	handler := Handler()
+	return http.ListenAndServe(":"+port, handler)
+}
+
+func Handler() http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 
 	r := gin.Default()
@@ -198,7 +203,7 @@ func Run([]string) (err error) {
 		return
 	})
 
-	return http.ListenAndServe(":" + port, r)
+	return r
 }
 
 func forwardRequest(c *gin.Context) {
