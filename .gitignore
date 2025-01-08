@@ -1,3 +1,4 @@
 gopilot
 .env
 *.sum
+*.log

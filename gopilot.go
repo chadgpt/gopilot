@@ -59,6 +59,7 @@ func GetEnvOrDefault(key, defaultValue string) string {
 func Run([]string) (err error) {
 	log.Println("Server is running on port", port)
 	log.Println("client_id:", client_id)
+	log.Println("DEBUG:", os.Getenv("DEBUG") != "")
 
 	handler := Handler()
 	return http.ListenAndServe(":"+port, handler)
@@ -254,15 +255,31 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
+	var logFile *os.File
+	if os.Getenv("DEBUG") != "" {
+		logFile, err = newTempfile(".")
+		if err != nil {
+			log.Println("Error creating log file:", err)
+		} else {
+			log.Println("Log file:", logFile.Name(), "isStream:", isStream)
+
+			body, _ := json.Marshal(jsonBody)
+			bodyString := string(body)
+			logFile.WriteString(bodyString + "\n\n")
+
+			defer logFile.Close()
+		}
+	}
+
 	if isStream {
-		returnStream(w, resp)
+		returnStream(w, resp, logFile)
 	} else {
-		returnJson(w, resp)
+		returnJson(w, resp, logFile)
 	}
 	return
 }
 
-func returnJson(w http.ResponseWriter, resp *http.Response) {
+func returnJson(w http.ResponseWriter, resp *http.Response, logFile *os.File) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	body, err := io.ReadAll(resp.Body.(io.Reader))
@@ -272,10 +289,15 @@ func returnJson(w http.ResponseWriter, resp *http.Response) {
 	}
 
 	w.Write(body)
+
+	if logFile != nil {
+		logFile.Write(body)
+	}
+
 	return
 }
 
-func returnStream(w http.ResponseWriter, resp *http.Response) {
+func returnStream(w http.ResponseWriter, resp *http.Response, logFile *os.File) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 
 	// 创建一个新的扫描器
@@ -283,29 +305,31 @@ func returnStream(w http.ResponseWriter, resp *http.Response) {
 
 	// 使用Scan方法来读取流
 	for scanner.Scan() {
-		line := scanner.Bytes()
+		line := scanner.Text()
 
 		// 替换 "content":null 为 "content":""
-		modifiedLine := bytes.Replace(line, []byte(`"content":null`), []byte(`"content":""`), -1)
+		modifiedLine := strings.ReplaceAll(line, `"content":null`, `"content":""`) + "\n"
 
 		// 将修改后的数据写入响应体
-		if _, err := w.Write(modifiedLine); err != nil {
+		if _, err := io.WriteString(w, modifiedLine); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		// 添加一个换行符
-		if _, err := w.Write([]byte("\n")); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		// 将修改后的数据写入日志文件
+		if logFile != nil {
+			if _, err := logFile.WriteString(modifiedLine); err != nil {
+				log.Println("Error writing to log file:", err)
+			}
 		}
 	}
 
 	if scanner.Err() != nil {
 		// 处理来自扫描器的任何错误
 		http.Error(w, scanner.Err().Error(), http.StatusInternalServerError)
-		return
+		log.Println("Error reading from scanner:", scanner.Err())
 	}
+
 	return
 }
 
