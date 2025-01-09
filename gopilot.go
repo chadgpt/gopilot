@@ -225,6 +225,22 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 
 	isStream := gjson.GetBytes(jsonData, "stream").String() == "true"
 
+	var logFile *os.File
+	if os.Getenv("DEBUG") != "" {
+		logFile, err = newTempfile(".")
+		if err != nil {
+			log.Println("Error creating log file:", err)
+		} else {
+			log.Println("Log file:", logFile.Name(), "isStream:", isStream)
+
+			body, _ := json.Marshal(jsonBody)
+			bodyString := string(body)
+			logFile.WriteString(bodyString + "\n\n")
+
+			defer logFile.Close()
+		}
+	}
+
 	req, err := http.NewRequest("POST", requestUrl, bytes.NewBuffer(jsonData))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -254,22 +270,6 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-
-	var logFile *os.File
-	if os.Getenv("DEBUG") != "" {
-		logFile, err = newTempfile(".")
-		if err != nil {
-			log.Println("Error creating log file:", err)
-		} else {
-			log.Println("Log file:", logFile.Name(), "isStream:", isStream)
-
-			body, _ := json.Marshal(jsonBody)
-			bodyString := string(body)
-			logFile.WriteString(bodyString + "\n\n")
-
-			defer logFile.Close()
-		}
-	}
 
 	if isStream {
 		returnStream(w, resp, logFile)
