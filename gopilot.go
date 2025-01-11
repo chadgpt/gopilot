@@ -73,6 +73,15 @@ func Handler() http.Handler {
 		json.NewEncoder(w).Encode(models())
 	})
 
+	// /openai/deployments/aish/chat/completions?api-version=2024-04-01-preview
+	mux.HandleFunc("/openai/deployments/gpt-4o/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		w.Header().Set("Connection", "keep-alive")
+
+		requestUrl = completionsUrl
+		forwardRequest(w, r)
+	})
+
 	mux.HandleFunc("/v1/chat/completions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 		w.Header().Set("Connection", "keep-alive")
