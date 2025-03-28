@@ -191,6 +191,21 @@ func Handler() http.Handler {
 	return mux
 }
 
+type loggingResponseWriter struct {
+	http.ResponseWriter
+	logFile *os.File
+}
+
+func (lrw *loggingResponseWriter) Write(data []byte) (int, error) {
+	n, err := lrw.ResponseWriter.Write(data)
+	if lrw.logFile != nil {
+		if _, err := lrw.logFile.Write(data); err != nil {
+			log.Println("Error writing to log file:", err)
+		}
+	}
+	return n, err
+}
+
 func forwardRequest(w http.ResponseWriter, r *http.Request) {
 	var jsonBody map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&jsonBody); err != nil {
@@ -241,12 +256,17 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 			log.Println("Error creating log file:", err)
 		} else {
 			log.Println("Log file:", logFile.Name(), "isStream:", isStream)
+			defer logFile.Close()
+
+			lrw := &loggingResponseWriter{
+				ResponseWriter: w,
+				logFile:        logFile,
+			}
+			w = lrw
 
 			body, _ := json.Marshal(jsonBody)
-			bodyString := string(body)
-			logFile.WriteString(bodyString + "\n\n")
-
-			defer logFile.Close()
+			logFile.Write(body)
+			logFile.WriteString("\n\n")
 		}
 	}
 
@@ -281,14 +301,14 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	if isStream {
-		returnStream(w, resp, logFile)
+		returnStream(w, resp)
 	} else {
-		returnJson(w, resp, logFile)
+		returnJson(w, resp)
 	}
 	return
 }
 
-func returnJson(w http.ResponseWriter, resp *http.Response, logFile *os.File) {
+func returnJson(w http.ResponseWriter, resp *http.Response) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 
 	body, err := io.ReadAll(resp.Body.(io.Reader))
@@ -298,15 +318,9 @@ func returnJson(w http.ResponseWriter, resp *http.Response, logFile *os.File) {
 	}
 
 	w.Write(body)
-
-	if logFile != nil {
-		logFile.Write(body)
-	}
-
-	return
 }
 
-func returnStream(w http.ResponseWriter, resp *http.Response, logFile *os.File) {
+func returnStream(w http.ResponseWriter, resp *http.Response) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 
 	// 创建一个新的扫描器
@@ -324,13 +338,6 @@ func returnStream(w http.ResponseWriter, resp *http.Response, logFile *os.File) 
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-
-		// 将修改后的数据写入日志文件
-		if logFile != nil {
-			if _, err := logFile.WriteString(modifiedLine); err != nil {
-				log.Println("Error writing to log file:", err)
-			}
-		}
 	}
 
 	if scanner.Err() != nil {
@@ -338,8 +345,6 @@ func returnStream(w http.ResponseWriter, resp *http.Response, logFile *os.File) 
 		http.Error(w, scanner.Err().Error(), http.StatusInternalServerError)
 		log.Println("Error reading from scanner:", scanner.Err())
 	}
-
-	return
 }
 
 func loadTemplate() (*template.Template, error) {
