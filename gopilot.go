@@ -62,6 +62,7 @@ func Run([]string) (err error) {
 	log.Println("DEBUG:", os.Getenv("DEBUG") != "")
 
 	handler := Handler()
+	handler = DebugLoggingMiddleware(handler)
 	return http.ListenAndServe(":"+port, handler)
 }
 
@@ -248,27 +249,6 @@ func forwardRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	isStream := gjson.GetBytes(jsonData, "stream").String() == "true"
-
-	var logFile *os.File
-	if os.Getenv("DEBUG") != "" {
-		logFile, err = newTempfile(".")
-		if err != nil {
-			log.Println("Error creating log file:", err)
-		} else {
-			log.Println("Log file:", logFile.Name(), "isStream:", isStream)
-			defer logFile.Close()
-
-			lrw := &loggingResponseWriter{
-				ResponseWriter: w,
-				logFile:        logFile,
-			}
-			w = lrw
-
-			body, _ := json.Marshal(jsonBody)
-			logFile.Write(body)
-			logFile.WriteString("\n\n")
-		}
-	}
 
 	req, err := http.NewRequest("POST", requestUrl, bytes.NewBuffer(jsonData))
 	if err != nil {
